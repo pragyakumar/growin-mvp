@@ -1,7 +1,8 @@
--- GrowIn MVP — Module 1: Auth & Profiles
+-- Enable UUID extension
+create extension if not exists "uuid-ossp";
 
 -- Profiles table
-create table if not exists public.profiles (
+create table public.profiles (
   id uuid references auth.users on delete cascade primary key,
   full_name text,
   username text unique,
@@ -10,56 +11,57 @@ create table if not exists public.profiles (
   skills text[] default '{}',
   github_url text,
   avatar_url text,
-  grow_score integer not null default 500,
-  onboarding_completed boolean not null default false,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  grow_score integer default 500,
+  onboarding_completed boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Enable RLS
+-- Enable Row Level Security
 alter table public.profiles enable row level security;
 
--- Anyone can read profiles
-create policy "Profiles are publicly readable"
-  on public.profiles for select
-  using (true);
+-- RLS Policies
+create policy "Public profiles are viewable by everyone."
+  on profiles for select
+  using ( true );
 
--- Users can insert their own profile
-create policy "Users can insert own profile"
-  on public.profiles for insert
-  with check (auth.uid() = id);
+create policy "Users can insert their own profile."
+  on profiles for insert
+  with check ( auth.uid() = id );
 
--- Users can update their own profile
-create policy "Users can update own profile"
-  on public.profiles for update
-  using (auth.uid() = id);
+create policy "Users can update own profile."
+  on profiles for update
+  using ( auth.uid() = id );
 
--- Auto-create profile on signup
+-- Function to handle new user signup
 create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger as $$
 begin
-  insert into public.profiles (id)
-  values (new.id)
-  on conflict (id) do nothing;
+  insert into public.profiles (id, full_name, avatar_url)
+  values (
+    new.id,
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'avatar_url'
+  );
   return new;
 end;
-$$;
+$$ language plpgsql security definer;
 
-drop trigger if exists on_auth_user_created on auth.users;
+-- Trigger on new user signup
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- Updated_at trigger
-create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
+-- Function to update updated_at
+create or replace function public.handle_updated_at()
+returns trigger as $$
 begin
-  new.updated_at = now();
+  new.updated_at = timezone('utc'::text, now());
   return new;
 end;
-$$;
+$$ language plpgsql;
 
-drop trigger if exists set_profiles_updated_at on public.profiles;
-create trigger set_profiles_updated_at
+-- Trigger for updated_at
+create trigger handle_updated_at
   before update on public.profiles
-  for each row execute procedure public.set_updated_at();
+  for each row execute procedure public.handle_updated_at();

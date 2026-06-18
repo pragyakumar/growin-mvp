@@ -5,16 +5,18 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "GrowIn – Fresher First Platform",
-  description: "Your career journey starts here. Build your profile, showcase your skills, and connect with opportunities.",
+  title: "GrowIn - Fresher First Platform",
+  description: "Your career journey starts here. GrowIn is the fresher-first platform combining LinkedIn, GitHub, and portfolio.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-gray-50 text-gray-900 antialiased`}>
-        {children}
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

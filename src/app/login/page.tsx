@@ -3,116 +3,184 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"email" | "otp">("email");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
   const router = useRouter();
   const supabase = createClient();
 
-  async function sendOtp(e: React.FormEvent) {
+  async function handleSendOtp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError("");
+    setError(null);
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        shouldCreateUser: true,
+      },
     });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setMessage("Check your email for a 6-digit OTP code!");
+      setStep("otp");
+    }
+
     setLoading(false);
-    if (error) { setError(error.message); return; }
-    setStep("otp");
   }
 
-  async function verifyOtp(e: React.FormEvent) {
+  async function handleVerifyOtp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError("");
-    const { error } = await supabase.auth.verifyOtp({
+    setError(null);
+
+    const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: otp,
       type: "email",
     });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      return;
+    }
+
+    if (data.user) {
+      // Check onboarding status
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarding_completed")
+        .eq("id", data.user.id)
+        .single();
+
+      if (profile?.onboarding_completed) {
+        router.push("/dashboard");
+      } else {
+        router.push("/onboarding");
+      }
+    }
+
     setLoading(false);
-    if (error) { setError(error.message); return; }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("onboarding_completed")
-      .single();
-
-    router.push(profile?.onboarding_completed ? "/dashboard" : "/onboarding");
-    router.refresh();
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 px-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+    <main className="min-h-screen bg-gradient-to-br from-green-50 to-white flex items-center justify-center px-4">
+      <div className="max-w-md w-full">
+        {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold">
-            Grow<span className="text-green-500">In</span>
+          <Link href="/" className="inline-flex items-center space-x-2">
+            <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-lg">G</span>
+            </div>
+            <span className="text-2xl font-bold text-gray-900">GrowIn</span>
+          </Link>
+          <h1 className="mt-6 text-2xl font-bold text-gray-900">
+            {step === "email" ? "Sign in to your account" : "Enter your OTP"}
           </h1>
-          <p className="text-gray-500 mt-1 text-sm">
-            {step === "email" ? "Sign in or create your account" : `Check your email — we sent a code to ${email}`}
+          <p className="mt-2 text-gray-500">
+            {step === "email"
+              ? "We'll send you a one-time password"
+              : `We sent a code to ${email}`}
           </p>
         </div>
 
-        {step === "email" ? (
-          <form onSubmit={sendOtp} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-              />
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+          {message && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+              {message}
             </div>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl transition-colors"
-            >
-              {loading ? "Sending…" : "Send OTP"}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={verifyOtp} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">6-digit code</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                required
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
-                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-green-400"
-              />
+          )}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
             </div>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl transition-colors"
-            >
-              {loading ? "Verifying…" : "Verify & Continue"}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setStep("email"); setOtp(""); setError(""); }}
-              className="w-full text-sm text-gray-500 hover:text-gray-700"
-            >
-              ← Use a different email
-            </button>
-          </form>
-        )}
+          )}
+
+          {step === "email" ? (
+            <form onSubmit={handleSendOtp} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Email address
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white font-semibold py-3 rounded-xl transition-colors duration-200"
+              >
+                {loading ? "Sending..." : "Send OTP"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="otp"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  6-digit OTP
+                </label>
+                <input
+                  id="otp"
+                  type="text"
+                  required
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="123456"
+                  maxLength={6}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition text-center text-2xl font-mono tracking-widest"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white font-semibold py-3 rounded-xl transition-colors duration-200"
+              >
+                {loading ? "Verifying..." : "Verify OTP"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("email");
+                  setOtp("");
+                  setError(null);
+                  setMessage(null);
+                }}
+                className="w-full text-gray-500 hover:text-gray-700 text-sm py-2"
+              >
+                ← Back to email
+              </button>
+            </form>
+          )}
+        </div>
+
+        <p className="text-center mt-6 text-sm text-gray-400">
+          By continuing, you agree to our Terms of Service and Privacy Policy.
+        </p>
       </div>
     </main>
   );
