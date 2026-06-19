@@ -2,21 +2,17 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<"email" | "otp">("email");
+  const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
-  const router = useRouter();
   const supabase = createClient();
 
-  async function handleSendOtp(e: React.FormEvent) {
+  async function handleSendLink(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -32,43 +28,7 @@ export default function LoginPage() {
     if (error) {
       setError(error.message);
     } else {
-      setMessage("Check your email for a 6-digit OTP code!");
-      setStep("otp");
-    }
-
-    setLoading(false);
-  }
-
-  async function handleVerifyOtp(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const { data, error } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: "email",
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
-
-    if (data.user) {
-      // Check onboarding status
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("onboarding_completed")
-        .eq("id", data.user.id)
-        .single();
-
-      if (profile?.onboarding_completed) {
-        router.push("/dashboard");
-      } else {
-        router.push("/onboarding");
-      }
+      setSent(true);
     }
 
     setLoading(false);
@@ -86,35 +46,43 @@ export default function LoginPage() {
             <span className="text-2xl font-bold text-gray-900">GrowIn</span>
           </Link>
           <h1 className="mt-6 text-2xl font-bold text-gray-900">
-            {step === "email" ? "Sign in to your account" : "Enter your OTP"}
+            {sent ? "Check your email" : "Sign in to GrowIn"}
           </h1>
           <p className="mt-2 text-gray-500">
-            {step === "email"
-              ? "We'll send you a one-time password"
-              : `We sent a code to ${email}`}
+            {sent
+              ? `We sent a magic link to ${email}`
+              : "We'll send you a secure sign-in link"}
           </p>
         </div>
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-          {message && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-              {message}
+          {sent ? (
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <p className="text-gray-600 text-sm">
+                Click the link in your email to sign in. The link expires in 1 hour.
+              </p>
+              <button
+                onClick={() => { setSent(false); setEmail(""); }}
+                className="text-green-600 hover:text-green-700 text-sm font-medium"
+              >
+                Use a different email
+              </button>
             </div>
-          )}
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
-            </div>
-          )}
-
-          {step === "email" ? (
-            <form onSubmit={handleSendOtp} className="space-y-4">
+          ) : (
+            <form onSubmit={handleSendLink} className="space-y-4">
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {error}
+                </div>
+              )}
               <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email address
                 </label>
                 <input
@@ -132,47 +100,7 @@ export default function LoginPage() {
                 disabled={loading}
                 className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white font-semibold py-3 rounded-xl transition-colors duration-200"
               >
-                {loading ? "Sending..." : "Send OTP"}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="otp"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  6-digit OTP
-                </label>
-                <input
-                  id="otp"
-                  type="text"
-                  required
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="123456"
-                  maxLength={6}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition text-center text-2xl font-mono tracking-widest"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading || otp.length !== 6}
-                className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white font-semibold py-3 rounded-xl transition-colors duration-200"
-              >
-                {loading ? "Verifying..." : "Verify OTP"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("email");
-                  setOtp("");
-                  setError(null);
-                  setMessage(null);
-                }}
-                className="w-full text-gray-500 hover:text-gray-700 text-sm py-2"
-              >
-                ← Back to email
+                {loading ? "Sending..." : "Send Magic Link"}
               </button>
             </form>
           )}
